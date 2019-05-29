@@ -3894,6 +3894,7 @@ sub singletest {
         my $gdbinit = "$TESTDIR/gdbinit$testnum";
         open(GDBCMD, ">$LOGDIR/gdbcmd");
         print GDBCMD "run\n";
+        print GDBCMD "bt\n";
         print GDBCMD "quit\n";
         close(GDBCMD);
     }

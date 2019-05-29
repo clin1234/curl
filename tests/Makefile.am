@@ -100,6 +100,7 @@ nonflaky-test: perlcheck all
 
 special-test: perlcheck all
 	./runtests.pl -a -g 507 534 1553
+	./runtests.pl -a 507 534 1553
 
 torture-test: perlcheck all
 	$(TEST) $(TEST_T) $(TFLAGS)
