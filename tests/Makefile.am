@@ -98,6 +98,9 @@ full-test: perlcheck all
 nonflaky-test: perlcheck all
 	$(TEST) $(TEST_NF) $(TFLAGS)
 
+special-test: perlcheck all
+	./runtests.pl -g 507 534 1553
+
 torture-test: perlcheck all
 	$(TEST) $(TEST_T) $(TFLAGS)
 

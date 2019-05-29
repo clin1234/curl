@@ -203,7 +203,7 @@ my $stunnel = checkcmd("stunnel4") || checkcmd("tstunnel") || checkcmd("stunnel"
 my $valgrind = checktestcmd("valgrind");
 my $valgrind_logfile="--logfile";
 my $valgrind_tool;
-my $gdb = checktestcmd("gdb");
+my $gdb = checktestcmd("lldb");
 my $httptlssrv = find_httptlssrv();
 
 my $has_ssl;        # set if libcurl is built with SSL support
@@ -3893,9 +3893,8 @@ sub singletest {
     if($gdbthis) {
         my $gdbinit = "$TESTDIR/gdbinit$testnum";
         open(GDBCMD, ">$LOGDIR/gdbcmd");
-        print GDBCMD "set args $cmdargs\n";
-        print GDBCMD "show args\n";
-        print GDBCMD "source $gdbinit\n" if -e $gdbinit;
+        print GDBCMD "run\n";
+        print GDBCMD "quit\n";
         close(GDBCMD);
     }
 
@@ -3906,11 +3905,10 @@ sub singletest {
     if ($torture) {
         $cmdres = torture($CMDLINE,
                           $testnum,
-                          "$gdb --directory libtest $DBGCURL -x $LOGDIR/gdbcmd");
+                          "$gdb $DBGCURL -s $LOGDIR/gdbcmd");
     }
     elsif($gdbthis) {
-        my $GDBW = ($gdbxwin) ? "-w" : "";
-        runclient("$gdb --directory libtest $DBGCURL $GDBW -x $LOGDIR/gdbcmd");
+        runclient("$gdb -s $LOGDIR/gdbcmd -- $CMDLINE");
         $cmdres=0; # makes it always continue after a debugged run
     }
     else {
@@ -4396,6 +4394,9 @@ sub singletest {
             $errok = 1;
             last;
         }
+    }
+    if($gdbthis) {
+        $errok = 1;
     }
 
     if($errok) {
