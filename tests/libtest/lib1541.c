@@ -5,11 +5,11 @@
  *                            | (__| |_| |  _ <| |___
  *                             \___|\___/|_| \_\_____|
  *
- * Copyright (C) 2019, Daniel Stenberg, <daniel@haxx.se>, et al.
+ * Copyright (C) 2019 - 2020, Daniel Stenberg, <daniel@haxx.se>, et al.
  *
  * This software is licensed as described in the file COPYING, which
  * you should have received as part of this distribution. The terms
- * are also available at https://curl.haxx.se/docs/copyright.html.
+ * are also available at https://curl.se/docs/copyright.html.
  *
  * You may opt to use, copy, modify, merge, publish, distribute and/or sell
  * copies of the Software, and permit persons to whom the Software is
@@ -19,6 +19,13 @@
  * KIND, either express or implied.
  *
  ***************************************************************************/
+/*
+ * KNOW_BUGS "A shared connection cache is not thread-safe"
+ *
+ * This source code was used to verify shared connection cache but since this
+ * is a known issue the test is no longer built or run. This code is here to
+ * allow for testing once someone gets to work on fixing this.
+ */
 #include "test.h"
 
 #include "testutil.h"
@@ -104,7 +111,6 @@ int test(char *URL)
 {
   pthread_t tid[NUM_THREADS];
   int i;
-  int error;
   CURLSH *share;
   struct initurl url[NUM_THREADS];
 
@@ -119,6 +125,7 @@ int test(char *URL)
   init_locks();
 
   for(i = 0; i< NUM_THREADS; i++) {
+    int error;
     url[i].url = URL;
     url[i].share = share;
     url[i].threadno = i;
@@ -131,7 +138,7 @@ int test(char *URL)
 
   /* now wait for all threads to terminate */
   for(i = 0; i< NUM_THREADS; i++) {
-    error = pthread_join(tid[i], NULL);
+    pthread_join(tid[i], NULL);
     fprintf(stderr, "Thread %d terminated\n", i);
   }
 

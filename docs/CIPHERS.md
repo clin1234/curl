@@ -1,15 +1,15 @@
 # Ciphers
 
 With curl's options
-[`CURLOPT_SSL_CIPHER_LIST`](https://curl.haxx.se/libcurl/c/CURLOPT_SSL_CIPHER_LIST.html)
+[`CURLOPT_SSL_CIPHER_LIST`](https://curl.se/libcurl/c/CURLOPT_SSL_CIPHER_LIST.html)
 and
-[`--ciphers`](https://curl.haxx.se/docs/manpage.html#--ciphers)
+[`--ciphers`](https://curl.se/docs/manpage.html#--ciphers)
 users can control which ciphers to consider when negotiating TLS connections.
 
 TLS 1.3 ciphers are supported since curl 7.61 for OpenSSL 1.1.1+ with options
-[`CURLOPT_TLS13_CIPHERS`](https://curl.haxx.se/libcurl/c/CURLOPT_TLS13_CIPHERS.html)
+[`CURLOPT_TLS13_CIPHERS`](https://curl.se/libcurl/c/CURLOPT_TLS13_CIPHERS.html)
 and
-[`--tls13-ciphers`](https://curl.haxx.se/docs/manpage.html#--tls13-ciphers)
+[`--tls13-ciphers`](https://curl.se/docs/manpage.html#--tls13-ciphers)
 . If you are using a different SSL backend you can try setting TLS 1.3 cipher
 suites by using the respective regular cipher option.
 
@@ -460,6 +460,12 @@ Schannel allows the enabling and disabling of encryption algorithms, but not
 specific ciphersuites. They are
 [defined](https://docs.microsoft.com/windows/desktop/SecCrypto/alg-id) by
 Microsoft.
+
+There is also the case that the selected algorithm is not supported by the
+protocol or does not match the ciphers offered by the server during the SSL
+negotiation. In this case curl will return error
+`CURLE_SSL_CONNECT_ERROR (35) SEC_E_ALGORITHM_MISMATCH`
+and the request will fail.
 
 `CALG_MD2`,
 `CALG_MD4`,
