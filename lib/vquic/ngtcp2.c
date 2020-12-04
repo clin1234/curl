@@ -126,7 +126,7 @@ quic_from_ossl_level(OSSL_ENCRYPTION_LEVEL ossl_level)
   case ssl_encryption_handshake:
     return NGTCP2_CRYPTO_LEVEL_HANDSHAKE;
   case ssl_encryption_application:
-    return NGTCP2_CRYPTO_LEVEL_APP;
+    return NGTCP2_CRYPTO_LEVEL_APPLICATION;
   default:
     assert(0);
   }
@@ -143,7 +143,7 @@ quic_from_gtls_level(gnutls_record_encryption_level_t gtls_level)
   case GNUTLS_ENCRYPTION_LEVEL_HANDSHAKE:
     return NGTCP2_CRYPTO_LEVEL_HANDSHAKE;
   case GNUTLS_ENCRYPTION_LEVEL_APPLICATION:
-    return NGTCP2_CRYPTO_LEVEL_APP;
+    return NGTCP2_CRYPTO_LEVEL_APPLICATION;
   default:
     assert(0);
   }
@@ -265,7 +265,7 @@ static int quic_set_encryption_secrets(SSL *ssl,
        qs->qconn, NULL, NULL, NULL, level, tx_secret, secretlen) != 0)
     return 0;
 
-  if(level == NGTCP2_CRYPTO_LEVEL_APP) {
+  if(level == NGTCP2_CRYPTO_LEVEL_APPLICATION) {
     if(init_ngh3_conn(qs) != CURLE_OK)
       return 0;
   }
@@ -349,14 +349,8 @@ static int quic_init_ssl(struct quicsocket *qs)
   SSL_set_app_data(qs->ssl, qs);
   SSL_set_connect_state(qs->ssl);
 
-  switch(qs->version) {
-#ifdef NGTCP2_PROTO_VER
-  case NGTCP2_PROTO_VER:
-    alpn = (const uint8_t *)NGHTTP3_ALPN_H3;
-    alpnlen = sizeof(NGHTTP3_ALPN_H3) - 1;
-    break;
-#endif
-  }
+  alpn = (const uint8_t *)NGHTTP3_ALPN_H3;
+  alpnlen = sizeof(NGHTTP3_ALPN_H3) - 1;
   if(alpn)
     SSL_set_alpn_protos(qs->ssl, alpn, (int)alpnlen);
 
@@ -382,7 +376,7 @@ static int secret_func(gnutls_session_t ssl,
        qs->qconn, NULL, NULL, NULL, level, tx_secret, secretlen) != 0)
     return 0;
 
-  if(level == NGTCP2_CRYPTO_LEVEL_APP) {
+  if(level == NGTCP2_CRYPTO_LEVEL_APPLICATION) {
     if(init_ngh3_conn(qs) != CURLE_OK)
       return -1;
   }
@@ -532,15 +526,9 @@ static int quic_init_ssl(struct quicsocket *qs)
     return 1;
   }
 
-  switch(qs->version) {
-#ifdef NGTCP2_PROTO_VER
-  case NGTCP2_PROTO_VER:
-    /* strip the first byte (the length) from NGHTTP3_ALPN_H3 */
-    alpn.data = (unsigned char *)NGHTTP3_ALPN_H3 + 1;
-    alpn.size = sizeof(NGHTTP3_ALPN_H3) - 2;
-    break;
-#endif
-  }
+  /* strip the first byte (the length) from NGHTTP3_ALPN_H3 */
+  alpn.data = (unsigned char *)NGHTTP3_ALPN_H3 + 1;
+  alpn.size = sizeof(NGHTTP3_ALPN_H3) - 2;
   if(alpn.data)
     gnutls_alpn_set_protocols(qs->ssl, &alpn, 1, 0);
 
@@ -828,11 +816,12 @@ CURLcode Curl_quic_connect(struct connectdata *conn,
   if(rv == -1)
     return CURLE_QUIC_CONNECT_ERROR;
 
-  ngtcp2_addr_init(&path.local, &qs->local_addr, qs->local_addrlen, NULL);
+  ngtcp2_addr_init(&path.local, (struct sockaddr *)&qs->local_addr,
+                   qs->local_addrlen, NULL);
   ngtcp2_addr_init(&path.remote, addr, addrlen, NULL);
 
   rc = ngtcp2_conn_client_new(&qs->qconn, &qs->dcid, &qs->scid, &path,
-                              NGTCP2_PROTO_VER_MAX, &ng_callbacks,
+                              NGTCP2_PROTO_VER_MIN, &ng_callbacks,
                               &qs->settings, NULL, qs);
   if(rc)
     return CURLE_QUIC_CONNECT_ERROR;
@@ -1745,7 +1734,7 @@ static CURLcode ng_process_ingress(struct connectdata *conn,
       return CURLE_RECV_ERROR;
     }
 
-    ngtcp2_addr_init(&path.local, &qs->local_addr,
+    ngtcp2_addr_init(&path.local, (struct sockaddr *)&qs->local_addr,
                      qs->local_addrlen, NULL);
     ngtcp2_addr_init(&path.remote, (struct sockaddr *)&remote_addr,
                      remote_addrlen, NULL);
@@ -1779,7 +1768,7 @@ static CURLcode ng_flush_egress(struct connectdata *conn, int sockfd,
   nghttp3_vec vec[16];
   ssize_t ndatalen;
 
-  switch(qs->local_addr.sa_family) {
+  switch(qs->local_addr.ss_family) {
   case AF_INET:
     pktlen = NGTCP2_MAX_PKTLEN_IPV4;
     break;
