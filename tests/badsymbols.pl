@@ -90,6 +90,9 @@ sub scanenums {
         if($skipit) {
             next;
         }
+        if (/^#/) {
+            next;
+        }
         if ( /enum\s+(\S+\s+)?{/ .. /}/ ) {
             s/^\s+//;
             chomp;
@@ -129,7 +132,7 @@ sub scanheader {
 }
 
 
-opendir(my $dh, $incdir) || die "Can't opendir: $!";
+opendir(my $dh, $incdir) || die "Can't opendir $incdir: $!";
 my @hfiles = grep { /\.h$/ } readdir($dh);
 closedir $dh;
 
