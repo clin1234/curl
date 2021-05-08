@@ -858,25 +858,8 @@ struct proxy_info {
   char *passwd;  /* proxy password string, allocated */
 };
 
-/* struct for HTTP CONNECT state data */
-struct http_connect_state {
-  struct dynbuf rcvbuf;
-  enum keeponval {
-    KEEPON_DONE,
-    KEEPON_CONNECT,
-    KEEPON_IGNORE
-  } keepon;
-  curl_off_t cl; /* size of content to read and ignore */
-  enum {
-    TUNNEL_INIT,    /* init/default/no tunnel state */
-    TUNNEL_CONNECT, /* CONNECT has been sent off */
-    TUNNEL_COMPLETE /* CONNECT response received completely */
-  } tunnel_state;
-  BIT(chunked_encoding);
-  BIT(close_connection);
-};
-
 struct ldapconninfo;
+struct http_connect_state;
 
 /* for the (SOCKS) connect state machine */
 enum connect_t {
@@ -1722,8 +1705,8 @@ struct UserDefined {
   struct ssl_general_config general_ssl; /* general user defined SSL stuff */
   long dns_cache_timeout; /* DNS cache timeout */
   long buffer_size;      /* size of receive buffer to use */
-  size_t upload_buffer_size; /* size of upload buffer to use,
-                                keep it >= CURL_MAX_WRITE_SIZE */
+  unsigned int upload_buffer_size; /* size of upload buffer to use,
+                                      keep it >= CURL_MAX_WRITE_SIZE */
   void *private_data; /* application-private data */
   struct curl_slist *http200aliases; /* linked list of aliases for http200 */
   unsigned char ipver; /* the CURL_IPRESOLVE_* defines in the public header
