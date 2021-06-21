@@ -185,6 +185,7 @@ const struct Curl_handler Curl_handler_telnet = {
   ZERO_NULL,                            /* disconnect */
   ZERO_NULL,                            /* readwrite */
   ZERO_NULL,                            /* connection_check */
+  ZERO_NULL,                            /* attach connection */
   PORT_TELNET,                          /* defport */
   CURLPROTO_TELNET,                     /* protocol */
   CURLPROTO_TELNET,                     /* family */
@@ -833,7 +834,7 @@ static CURLcode check_telnet_options(struct Curl_easy *data)
           tn->us_preferred[CURL_TELOPT_NAWS] = CURL_YES;
         else {
           failf(data, "Syntax error in telnet option: %s", head->data);
-          result = CURLE_TELNET_OPTION_SYNTAX;
+          result = CURLE_SETOPT_OPTION_SYNTAX;
           break;
         }
         continue;
@@ -854,7 +855,7 @@ static CURLcode check_telnet_options(struct Curl_easy *data)
       break;
     }
     failf(data, "Syntax error in telnet option: %s", head->data);
-    result = CURLE_TELNET_OPTION_SYNTAX;
+    result = CURLE_SETOPT_OPTION_SYNTAX;
     break;
   }
 
@@ -921,7 +922,7 @@ static void suboption(struct Curl_easy *data)
         size_t tmplen = (strlen(v->data) + 1);
         /* Add the variable only if it fits */
         if(len + tmplen < (int)sizeof(temp)-6) {
-          if(sscanf(v->data, "%127[^,],%127s", varname, varval)) {
+          if(sscanf(v->data, "%127[^,],%127s", varname, varval) == 2) {
             msnprintf((char *)&temp[len], sizeof(temp) - len,
                       "%c%s%c%s", CURL_NEW_ENV_VAR, varname,
                       CURL_NEW_ENV_VALUE, varval);

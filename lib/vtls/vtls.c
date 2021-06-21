@@ -326,7 +326,7 @@ Curl_ssl_connect(struct Curl_easy *data, struct connectdata *conn,
 
 CURLcode
 Curl_ssl_connect_nonblocking(struct Curl_easy *data, struct connectdata *conn,
-                             int sockindex, bool *done)
+                             bool isproxy, int sockindex, bool *done)
 {
   CURLcode result;
 
@@ -345,7 +345,7 @@ Curl_ssl_connect_nonblocking(struct Curl_easy *data, struct connectdata *conn,
   result = Curl_ssl->connect_nonblocking(data, conn, sockindex, done);
   if(result)
     conn->ssl[sockindex].use = FALSE;
-  else if(*done)
+  else if(*done && !isproxy)
     Curl_pgrsTime(data, TIMER_APPCONNECT); /* SSL is connected */
   return result;
 }
@@ -407,8 +407,9 @@ bool Curl_ssl_getsessionid(struct Curl_easy *data,
 
   DEBUGASSERT(SSL_SET_OPTION(primary.sessionid));
 
-  if(!SSL_SET_OPTION(primary.sessionid))
-    /* session ID re-use is disabled */
+  if(!SSL_SET_OPTION(primary.sessionid) || !data->state.session)
+    /* session ID re-use is disabled or the session cache has not been
+       setup */
     return TRUE;
 
   /* Lock if shared */
@@ -443,6 +444,10 @@ bool Curl_ssl_getsessionid(struct Curl_easy *data,
     }
   }
 
+  DEBUGF(infof(data, "%s Session ID in cache for %s %s://%s:%d\n",
+               no_match? "Didn't find": "Found",
+               isProxy ? "proxy" : "host",
+               conn->handler->scheme, name, port));
   return no_match;
 }
 
@@ -492,14 +497,14 @@ void Curl_ssl_delsessionid(struct Curl_easy *data, void *ssl_sessionid)
  */
 CURLcode Curl_ssl_addsessionid(struct Curl_easy *data,
                                struct connectdata *conn,
-                               bool isProxy,
+                               const bool isProxy,
                                void *ssl_sessionid,
                                size_t idsize,
                                int sockindex)
 {
   size_t i;
-  struct Curl_ssl_session *store = &data->state.session[0];
-  long oldest_age = data->state.session[0].age; /* zero if unused */
+  struct Curl_ssl_session *store;
+  long oldest_age;
   char *clone_host;
   char *clone_conn_to_host;
   int conn_to_port;
@@ -515,6 +520,11 @@ CURLcode Curl_ssl_addsessionid(struct Curl_easy *data,
   const char *hostname = conn->host.name;
 #endif
   (void)sockindex;
+  if(!data->state.session)
+    return CURLE_OK;
+
+  store = &data->state.session[0];
+  oldest_age = data->state.session[0].age; /* zero if unused */
   DEBUGASSERT(SSL_SET_OPTION(primary.sessionid));
 
   clone_host = strdup(hostname);
@@ -583,9 +593,31 @@ CURLcode Curl_ssl_addsessionid(struct Curl_easy *data,
     return CURLE_OUT_OF_MEMORY;
   }
 
+  DEBUGF(infof(data, "Added Session ID to cache for %s://%s:%d [%s]\n",
+               store->scheme, store->name, store->remote_port,
+               isProxy ? "PROXY" : "server"));
   return CURLE_OK;
 }
 
+void Curl_ssl_associate_conn(struct Curl_easy *data,
+                             struct connectdata *conn)
+{
+  if(Curl_ssl->associate_connection) {
+    Curl_ssl->associate_connection(data, conn, FIRSTSOCKET);
+    if(conn->sock[SECONDARYSOCKET] && conn->bits.sock_accepted)
+      Curl_ssl->associate_connection(data, conn, SECONDARYSOCKET);
+  }
+}
+
+void Curl_ssl_detach_conn(struct Curl_easy *data,
+                          struct connectdata *conn)
+{
+  if(Curl_ssl->disassociate_connection) {
+    Curl_ssl->disassociate_connection(data, FIRSTSOCKET);
+    if(conn->sock[SECONDARYSOCKET] && conn->bits.sock_accepted)
+      Curl_ssl->disassociate_connection(data, SECONDARYSOCKET);
+  }
+}
 
 void Curl_ssl_close_all(struct Curl_easy *data)
 {
@@ -1214,7 +1246,9 @@ static const struct Curl_ssl Curl_ssl_multi = {
   Curl_none_set_engine_default,      /* set_engine_default */
   Curl_none_engines_list,            /* engines_list */
   Curl_none_false_start,             /* false_start */
-  NULL                               /* sha256sum */
+  NULL,                              /* sha256sum */
+  NULL,                              /* associate_connection */
+  NULL                               /* disassociate_connection */
 };
 
 const struct Curl_ssl *Curl_ssl =

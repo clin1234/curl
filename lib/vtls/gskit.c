@@ -1192,6 +1192,7 @@ static int gskit_shutdown(struct Curl_easy *data,
   int what;
   int rc;
   char buf[120];
+  int loop = 10; /* don't get stuck */
 
   if(!BACKEND->handle)
     return 0;
@@ -1206,7 +1207,7 @@ static int gskit_shutdown(struct Curl_easy *data,
   what = SOCKET_READABLE(conn->sock[sockindex],
                          SSL_SHUTDOWN_TIMEOUT);
 
-  for(;;) {
+  while(loop--) {
     ssize_t nread;
 
     if(what < 0) {
@@ -1304,7 +1305,9 @@ const struct Curl_ssl Curl_ssl_gskit = {
   Curl_none_set_engine_default,   /* set_engine_default */
   Curl_none_engines_list,         /* engines_list */
   Curl_none_false_start,          /* false_start */
-  NULL                            /* sha256sum */
+  NULL,                           /* sha256sum */
+  NULL,                           /* associate_connection */
+  NULL                            /* disassociate_connection */
 };
 
 #endif /* USE_GSKIT */

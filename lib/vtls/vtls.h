@@ -84,6 +84,11 @@ struct Curl_ssl {
   bool (*false_start)(void);
   CURLcode (*sha256sum)(const unsigned char *input, size_t inputlen,
                     unsigned char *sha256sum, size_t sha256sumlen);
+
+  void (*associate_connection)(struct Curl_easy *data,
+                               struct connectdata *conn,
+                               int sockindex);
+  void (*disassociate_connection)(struct Curl_easy *data, int sockindex);
 };
 
 #ifdef USE_SSL
@@ -188,6 +193,7 @@ CURLcode Curl_ssl_connect(struct Curl_easy *data, struct connectdata *conn,
                           int sockindex);
 CURLcode Curl_ssl_connect_nonblocking(struct Curl_easy *data,
                                       struct connectdata *conn,
+                                      bool isproxy,
                                       int sockindex,
                                       bool *done);
 /* tell the SSL stuff to close down all open information regarding
@@ -241,7 +247,7 @@ void Curl_ssl_sessionid_unlock(struct Curl_easy *data);
  */
 bool Curl_ssl_getsessionid(struct Curl_easy *data,
                            struct connectdata *conn,
-                           const bool isproxy,
+                           const bool isProxy,
                            void **ssl_sessionid,
                            size_t *idsize, /* set 0 if unknown */
                            int sockindex);
@@ -283,6 +289,11 @@ bool Curl_ssl_cert_status_request(void);
 
 bool Curl_ssl_false_start(void);
 
+void Curl_ssl_associate_conn(struct Curl_easy *data,
+                             struct connectdata *conn);
+void Curl_ssl_detach_conn(struct Curl_easy *data,
+                          struct connectdata *conn);
+
 #define SSL_SHUTDOWN_TIMEOUT 10000 /* ms */
 
 #else /* if not USE_SSL */
@@ -303,12 +314,14 @@ bool Curl_ssl_false_start(void);
 #define Curl_ssl_data_pending(x,y) 0
 #define Curl_ssl_check_cxn(x) 0
 #define Curl_ssl_free_certinfo(x) Curl_nop_stmt
-#define Curl_ssl_connect_nonblocking(x,y,z,w) CURLE_NOT_BUILT_IN
+#define Curl_ssl_connect_nonblocking(x,y,z,w,a) CURLE_NOT_BUILT_IN
 #define Curl_ssl_kill_session(x) Curl_nop_stmt
 #define Curl_ssl_random(x,y,z) ((void)x, CURLE_NOT_BUILT_IN)
 #define Curl_ssl_cert_status_request() FALSE
 #define Curl_ssl_false_start() FALSE
 #define Curl_ssl_tls13_ciphersuites() FALSE
+#define Curl_ssl_associate_conn(a,b) Curl_nop_stmt
+#define Curl_ssl_detach_conn(a,b) Curl_nop_stmt
 #endif
 
 #endif /* HEADER_CURL_VTLS_H */

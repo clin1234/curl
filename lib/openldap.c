@@ -107,6 +107,7 @@ const struct Curl_handler Curl_handler_ldap = {
   oldap_disconnect,                     /* disconnect */
   ZERO_NULL,                            /* readwrite */
   ZERO_NULL,                            /* connection_check */
+  ZERO_NULL,                            /* attach connection */
   PORT_LDAP,                            /* defport */
   CURLPROTO_LDAP,                       /* protocol */
   CURLPROTO_LDAP,                       /* family */
@@ -134,6 +135,7 @@ const struct Curl_handler Curl_handler_ldaps = {
   oldap_disconnect,                     /* disconnect */
   ZERO_NULL,                            /* readwrite */
   ZERO_NULL,                            /* connection_check */
+  ZERO_NULL,                            /* attach connection */
   PORT_LDAPS,                           /* defport */
   CURLPROTO_LDAPS,                      /* protocol */
   CURLPROTO_LDAP,                       /* family */
@@ -245,7 +247,7 @@ static CURLcode oldap_connect(struct Curl_easy *data, bool *done)
 #ifdef USE_SSL
   if(conn->handler->flags & PROTOPT_SSL) {
     CURLcode result;
-    result = Curl_ssl_connect_nonblocking(data, conn,
+    result = Curl_ssl_connect_nonblocking(data, conn, FALSE,
                                           FIRSTSOCKET, &li->ssldone);
     if(result)
       return result;
@@ -268,7 +270,8 @@ static CURLcode oldap_connecting(struct Curl_easy *data, bool *done)
   if(conn->handler->flags & PROTOPT_SSL) {
     /* Is the SSL handshake complete yet? */
     if(!li->ssldone) {
-      CURLcode result = Curl_ssl_connect_nonblocking(data, conn, FIRSTSOCKET,
+      CURLcode result = Curl_ssl_connect_nonblocking(data, conn, FALSE,
+                                                     FIRSTSOCKET,
                                                      &li->ssldone);
       if(result || !li->ssldone)
         return result;

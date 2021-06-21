@@ -1158,12 +1158,14 @@ static OSStatus CopyIdentityWithLabel(char *label,
           (SecIdentityRef) CFArrayGetValueAtIndex(keys_list, i);
         err = SecIdentityCopyCertificate(identity, &cert);
         if(err == noErr) {
+          OSStatus copy_status = noErr;
 #if CURL_BUILD_IOS
           common_name = SecCertificateCopySubjectSummary(cert);
 #elif CURL_BUILD_MAC_10_7
-          SecCertificateCopyCommonName(cert, &common_name);
+          copy_status = SecCertificateCopyCommonName(cert, &common_name);
 #endif
-          if(CFStringCompare(common_name, label_cf, 0) == kCFCompareEqualTo) {
+          if(copy_status == noErr &&
+            CFStringCompare(common_name, label_cf, 0) == kCFCompareEqualTo) {
             CFRelease(cert);
             CFRelease(common_name);
             CFRetain(identity);
@@ -3146,6 +3148,7 @@ static int sectransp_shutdown(struct Curl_easy *data,
   int what;
   int rc;
   char buf[120];
+  int loop = 10; /* avoid getting stuck */
 
   if(!backend->ssl_ctx)
     return 0;
@@ -3161,7 +3164,7 @@ static int sectransp_shutdown(struct Curl_easy *data,
 
   what = SOCKET_READABLE(conn->sock[sockindex], SSL_SHUTDOWN_TIMEOUT);
 
-  for(;;) {
+  while(loop--) {
     if(what < 0) {
       /* anything that gets here is fatally bad */
       failf(data, "select/poll on SSL socket, errno: %d", SOCKERRNO);
@@ -3452,7 +3455,9 @@ const struct Curl_ssl Curl_ssl_sectransp = {
   Curl_none_set_engine_default,       /* set_engine_default */
   Curl_none_engines_list,             /* engines_list */
   sectransp_false_start,              /* false_start */
-  sectransp_sha256sum                 /* sha256sum */
+  sectransp_sha256sum,                /* sha256sum */
+  NULL,                               /* associate_connection */
+  NULL                                /* disassociate_connection */
 };
 
 #ifdef __clang__

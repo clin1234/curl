@@ -17,7 +17,7 @@ to individuals.
 Before posting to one of the curl mailing lists, please read up on the
 [mailing list etiquette](https://curl.se/mail/etiquette.html).
 
-We also hang out on IRC in #curl on irc.freenode.net
+We also hang out on IRC in #curl on libera.chat
 
 If you're at all interested in the code side of things, consider clicking
 'watch' on the [curl repo on GitHub](https://github.com/curl/curl) to be
@@ -304,4 +304,4 @@ For Windows:
  - [https://gnuwin32.sourceforge.io/packages/diffutils.htm](https://gnuwin32.sourceforge.io/packages/diffutils.htm)
 
 ### Useful resources
-* [Webinar on getting code into cURL](https://www.youtube.com/watch?v=QmZ3W1d6LQI)
+ - [Webinar on getting code into cURL](https://www.youtube.com/watch?v=QmZ3W1d6LQI)

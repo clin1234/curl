@@ -106,15 +106,6 @@ if [ "$TRAVIS_OS_NAME" = linux -a "$LIBRESSL" ]; then
   make install
 fi
 
-if [ "$TRAVIS_OS_NAME" = linux -a "$HYPER" ]; then
-  cd $HOME
-  git clone --depth=1 https://github.com/hyperium/hyper.git
-  curl https://sh.rustup.rs -sSf | sh -s -- -y
-  source $HOME/.cargo/env
-  cd $HOME/hyper
-  RUSTFLAGS="--cfg hyper_unstable_ffi" cargo build --features client,http1,http2,ffi
-fi
-
 if [ "$TRAVIS_OS_NAME" = linux -a "$QUICHE" ]; then
   cd $HOME
   git clone --depth=1 --recursive https://github.com/cloudflare/quiche.git
@@ -175,4 +166,18 @@ if [ $TRAVIS_OS_NAME = linux ]; then
     sudo make install
 
   fi
+
+  if [ "$BEARSSL" = "yes" ]; then
+    if [ ! -e $HOME/bearssl-0.6/Makefile ]; then
+      cd $HOME
+      curl -LO https://bearssl.org/bearssl-0.6.tar.gz
+      tar -xzf bearssl-0.6.tar.gz
+      cd bearssl-0.6
+      make
+    fi
+    cd $HOME/bearssl-0.6
+    sudo cp inc/*.h /usr/local/include
+    sudo cp build/libbearssl.* /usr/local/lib
+  fi
+
 fi

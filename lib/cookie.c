@@ -95,7 +95,6 @@ Example set of cookies:
 #include "strcase.h"
 #include "curl_get_line.h"
 #include "curl_memrchr.h"
-#include "inet_pton.h"
 #include "parsedate.h"
 #include "rand.h"
 #include "rename.h"
@@ -143,31 +142,6 @@ static bool tailmatch(const char *cooke_domain, const char *hostname)
     return TRUE;
   if('.' == *(hostname + hostname_len - cookie_domain_len - 1))
     return TRUE;
-  return FALSE;
-}
-
-/*
- * isip
- *
- * Returns true if the given string is an IPv4 or IPv6 address (if IPv6 has
- * been enabled while building libcurl, and false otherwise.
- */
-static bool isip(const char *domain)
-{
-  struct in_addr addr;
-#ifdef ENABLE_IPV6
-  struct in6_addr addr6;
-#endif
-
-  if(Curl_inet_pton(AF_INET, domain, &addr)
-#ifdef ENABLE_IPV6
-     || Curl_inet_pton(AF_INET6, domain, &addr6)
-#endif
-    ) {
-    /* domain name given as IP address */
-    return TRUE;
-  }
-
   return FALSE;
 }
 
@@ -303,7 +277,7 @@ static size_t cookiehash(const char * const domain)
   const char *top;
   size_t len;
 
-  if(!domain || isip(domain))
+  if(!domain || Curl_host_is_ipnum(domain))
     return 0;
 
   top = get_top_domain(domain, &len);
@@ -397,13 +371,29 @@ static void strstore(char **str, const char *newstr)
  *
  * Remove expired cookies from the hash by inspecting the expires timestamp on
  * each cookie in the hash, freeing and deleting any where the timestamp is in
- * the past.
+ * the past.  If the cookiejar has recorded the next timestamp at which one or
+ * more cookies expire, then processing will exit early in case this timestamp
+ * is in the future.
  */
 static void remove_expired(struct CookieInfo *cookies)
 {
   struct Cookie *co, *nx;
   curl_off_t now = (curl_off_t)time(NULL);
   unsigned int i;
+
+  /*
+   * If the earliest expiration timestamp in the jar is in the future we can
+   * skip scanning the whole jar and instead exit early as there won't be any
+   * cookies to evict.  If we need to evict however, reset the next_expiration
+   * counter in order to track the next one. In case the recorded first
+   * expiration is the max offset, then perform the safe fallback of checking
+   * all cookies.
+   */
+  if(now < cookies->next_expiration &&
+      cookies->next_expiration != CURL_OFF_T_MAX)
+    return;
+  else
+    cookies->next_expiration = CURL_OFF_T_MAX;
 
   for(i = 0; i < COOKIE_HASH_SIZE; i++) {
     struct Cookie *pv = NULL;
@@ -421,6 +411,12 @@ static void remove_expired(struct CookieInfo *cookies)
         freecookie(co);
       }
       else {
+        /*
+         * If this cookie has an expiration timestamp earlier than what we've
+         * seen so far then record it for the next round of expirations.
+         */
+        if(co->expires && co->expires < cookies->next_expiration)
+          cookies->next_expiration = co->expires;
         pv = co;
       }
       co = nx;
@@ -645,7 +641,7 @@ Curl_cookie_add(struct Curl_easy *data,
             domain = ":";
 #endif
 
-          is_ip = isip(domain ? domain : whatptr);
+          is_ip = Curl_host_is_ipnum(domain ? domain : whatptr);
 
           if(!domain
              || (is_ip && !strcmp(whatptr, domain))
@@ -996,7 +992,7 @@ Curl_cookie_add(struct Curl_easy *data,
    * must also check that the data handle isn't NULL since the psl code will
    * dereference it.
    */
-  if(data && (domain && co->domain && !isip(co->domain))) {
+  if(data && (domain && co->domain && !Curl_host_is_ipnum(co->domain))) {
     const psl_ctx_t *psl = Curl_psl_use(data);
     int acceptable;
 
@@ -1134,6 +1130,13 @@ Curl_cookie_add(struct Curl_easy *data,
     c->numcookies++; /* one more cookie in the jar */
   }
 
+  /*
+   * Now that we've added a new cookie to the jar, update the expiration
+   * tracker in case it is the next one to expire.
+   */
+  if(co->expires && (co->expires < c->next_expiration))
+    c->next_expiration = co->expires;
+
   return co;
 }
 
@@ -1169,6 +1172,11 @@ struct CookieInfo *Curl_cookie_init(struct Curl_easy *data,
     c->filename = strdup(file?file:"none"); /* copy the name just in case */
     if(!c->filename)
       goto fail; /* failed to get memory */
+    /*
+     * Initialize the next_expiration time to signal that we don't have enough
+     * information yet.
+     */
+    c->next_expiration = CURL_OFF_T_MAX;
   }
   else {
     /* we got an already existing one, use that */
@@ -1247,7 +1255,8 @@ fail:
  *
  * Helper function to sort cookies such that the longest path gets before the
  * shorter path. Path, domain and name lengths are considered in that order,
- * with tge creationtime as the tiebreaker.
+ * with the creationtime as the tiebreaker. The creationtime is guaranteed to
+ * be unique per cookie, so we know we will get an ordering at that point.
  */
 static int cookie_sort(const void *p1, const void *p2)
 {
@@ -1355,7 +1364,7 @@ struct Cookie *Curl_cookie_getlist(struct CookieInfo *c,
   remove_expired(c);
 
   /* check if host is an IP(v4|v6) address */
-  is_ip = isip(host);
+  is_ip = Curl_host_is_ipnum(host);
 
   co = c->cookies[myhash];
 

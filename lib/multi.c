@@ -878,8 +878,10 @@ bool Curl_multiplex_wanted(const struct Curl_multi *multi)
 void Curl_detach_connnection(struct Curl_easy *data)
 {
   struct connectdata *conn = data->conn;
-  if(conn)
+  if(conn) {
     Curl_llist_remove(&conn->easyq, &data->conn_queue, NULL);
+    Curl_ssl_detach_conn(data, conn);
+  }
   data->conn = NULL;
 }
 
@@ -896,6 +898,9 @@ void Curl_attach_connnection(struct Curl_easy *data,
   data->conn = conn;
   Curl_llist_insert_next(&conn->easyq, conn->easyq.tail, data,
                          &data->conn_queue);
+  if(conn->handler->attach)
+    conn->handler->attach(data, conn);
+  Curl_ssl_associate_conn(data, conn);
 }
 
 static int waitconnect_getsock(struct connectdata *conn,
@@ -1038,7 +1043,12 @@ CURLMcode curl_multi_fdset(struct Curl_multi *multi,
 
   data = multi->easyp;
   while(data) {
-    int bitmap = multi_getsock(data, sockbunch);
+    int bitmap;
+#ifdef __clang_analyzer_
+    /* to prevent "The left operand of '>=' is a garbage value" warnings */
+    memset(sockbunch, 0, sizeof(sockbunch));
+#endif
+    bitmap = multi_getsock(data, sockbunch);
 
     for(i = 0; i< MAX_SOCKSPEREASYHANDLE; i++) {
       curl_socket_t s = CURL_SOCKET_BAD;

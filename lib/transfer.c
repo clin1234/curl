@@ -497,11 +497,13 @@ static int data_pending(const struct Curl_easy *data)
     return Curl_quic_data_pending(data);
 #endif
 
+  if(conn->handler->protocol&PROTO_FAMILY_FTP)
+    return Curl_ssl_data_pending(conn, SECONDARYSOCKET);
+
   /* in the case of libssh2, we can never be really sure that we have emptied
      its internal buffers so we MUST always try until we get EAGAIN back */
   return conn->handler->protocol&(CURLPROTO_SCP|CURLPROTO_SFTP) ||
 #if defined(USE_NGHTTP2)
-    Curl_ssl_data_pending(conn, FIRSTSOCKET) ||
     /* For HTTP/2, we may read up everything including response body
        with header fields in Curl_http_readwrite_headers. If no
        content-length is provided, curl waits for the connection
@@ -509,10 +511,9 @@ static int data_pending(const struct Curl_easy *data)
        TRUE. The thing is if we read everything, then http2_recv won't
        be called and we cannot signal the HTTP/2 stream has closed. As
        a workaround, we return nonzero here to call http2_recv. */
-    ((conn->handler->protocol&PROTO_FAMILY_HTTP) && conn->httpversion >= 20);
-#else
-    Curl_ssl_data_pending(conn, FIRSTSOCKET);
+    ((conn->handler->protocol&PROTO_FAMILY_HTTP) && conn->httpversion >= 20) ||
 #endif
+    Curl_ssl_data_pending(conn, FIRSTSOCKET);
 }
 
 /*
@@ -922,7 +923,7 @@ CURLcode Curl_done_sending(struct Curl_easy *data,
   return CURLE_OK;
 }
 
-#if defined(WIN32) && !defined(USE_LWIPSOCK)
+#if defined(WIN32) && defined(USE_WINSOCK)
 #ifndef SIO_IDEAL_SEND_BACKLOG_QUERY
 #define SIO_IDEAL_SEND_BACKLOG_QUERY 0x4004747B
 #endif
@@ -1211,8 +1212,12 @@ CURLcode Curl_readwrite(struct connectdata *conn,
   }
 
 #ifdef USE_HYPER
-  if(conn->datastream)
-    return conn->datastream(data, conn, &didwhat, done, select_res);
+  if(conn->datastream) {
+    result = conn->datastream(data, conn, &didwhat, done, select_res);
+    if(result || *done)
+      return result;
+  }
+  else {
 #endif
   /* We go ahead and do a read if we have a readable socket or if
      the stream was rewound (in which case we have data in a
@@ -1231,6 +1236,9 @@ CURLcode Curl_readwrite(struct connectdata *conn,
     if(result)
       return result;
   }
+#ifdef USE_HYPER
+  }
+#endif
 
   k->now = Curl_now();
   if(!didwhat) {
@@ -1631,7 +1639,8 @@ CURLcode Curl_follow(struct Curl_easy *data,
   DEBUGASSERT(data->state.uh);
   uc = curl_url_set(data->state.uh, CURLUPART_URL, newurl,
                     (type == FOLLOW_FAKE) ? CURLU_NON_SUPPORT_SCHEME :
-                    ((type == FOLLOW_REDIR) ? CURLU_URLENCODE : 0) );
+                    ((type == FOLLOW_REDIR) ? CURLU_URLENCODE : 0) |
+                    CURLU_ALLOW_SPACE);
   if(uc) {
     if(type != FOLLOW_FAKE)
       return Curl_uc_to_curlcode(uc);

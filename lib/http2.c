@@ -200,7 +200,9 @@ static bool http2_connisdead(struct Curl_easy *data, struct connectdata *conn)
               (int)nread);
         httpc->nread_inbuf = 0;
         httpc->inbuflen = nread;
-        (void)h2_process_pending_input(data, httpc, &result);
+        if(h2_process_pending_input(data, httpc, &result) < 0)
+          /* immediate error, considered dead */
+          dead = TRUE;
       }
       else
         /* the read failed so let's say this is dead anyway */
@@ -319,6 +321,7 @@ static const struct Curl_handler Curl_handler_http2 = {
   http2_disconnect,                     /* disconnect */
   ZERO_NULL,                            /* readwrite */
   http2_conncheck,                      /* connection_check */
+  ZERO_NULL,                            /* attach connection */
   PORT_HTTP,                            /* defport */
   CURLPROTO_HTTP,                       /* protocol */
   CURLPROTO_HTTP,                       /* family */
@@ -341,6 +344,7 @@ static const struct Curl_handler Curl_handler_http2_ssl = {
   http2_disconnect,                     /* disconnect */
   ZERO_NULL,                            /* readwrite */
   http2_conncheck,                      /* connection_check */
+  ZERO_NULL,                            /* attach connection */
   PORT_HTTP,                            /* defport */
   CURLPROTO_HTTPS,                      /* protocol */
   CURLPROTO_HTTP,                       /* family */
@@ -636,6 +640,8 @@ static int push_promise(struct Curl_easy *data,
       rv = CURL_PUSH_DENY;
       goto fail;
     }
+    Curl_dyn_init(&newstream->header_recvbuf, DYN_H2_HEADERS);
+    Curl_dyn_init(&newstream->trailer_recvbuf, DYN_H2_TRAILERS);
   }
   else {
     H2BUGF(infof(data, "Got PUSH_PROMISE, ignore it!\n"));
@@ -2228,7 +2234,7 @@ CURLcode Curl_http2_setup(struct Curl_easy *data,
     return result;
   }
 
-  infof(data, "Using HTTP2, server supports multi-use\n");
+  infof(data, "Using HTTP2, server supports multiplexing\n");
   stream->upload_left = 0;
   stream->upload_mem = NULL;
   stream->upload_len = 0;

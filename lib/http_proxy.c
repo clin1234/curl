@@ -61,7 +61,7 @@ static CURLcode https_proxy_connect(struct Curl_easy *data, int sockindex)
   if(!conn->bits.proxy_ssl_connected[sockindex]) {
     /* perform SSL initialization for this socket */
     result =
-      Curl_ssl_connect_nonblocking(data, conn, sockindex,
+      Curl_ssl_connect_nonblocking(data, conn, TRUE, sockindex,
                                    &conn->bits.proxy_ssl_connected[sockindex]);
     if(result)
       /* a failed connection is marked for closure to prevent (bad) re-use or
@@ -129,13 +129,13 @@ CURLcode Curl_proxy_connect(struct Curl_easy *data, int sockindex)
 bool Curl_connect_complete(struct connectdata *conn)
 {
   return !conn->connect_state ||
-    (conn->connect_state->tunnel_state == TUNNEL_COMPLETE);
+    (conn->connect_state->tunnel_state >= TUNNEL_COMPLETE);
 }
 
 bool Curl_connect_ongoing(struct connectdata *conn)
 {
   return conn->connect_state &&
-    (conn->connect_state->tunnel_state != TUNNEL_COMPLETE);
+    (conn->connect_state->tunnel_state <= TUNNEL_COMPLETE);
 }
 
 /* when we've sent a CONNECT to a proxy, we should rather either wait for the
@@ -202,13 +202,16 @@ static void connect_done(struct Curl_easy *data)
 {
   struct connectdata *conn = data->conn;
   struct http_connect_state *s = conn->connect_state;
-  s->tunnel_state = TUNNEL_COMPLETE;
-  Curl_dyn_free(&s->rcvbuf);
-  Curl_dyn_free(&s->req);
+  if(s->tunnel_state != TUNNEL_EXIT) {
+    s->tunnel_state = TUNNEL_EXIT;
+    Curl_dyn_free(&s->rcvbuf);
+    Curl_dyn_free(&s->req);
 
-  /* retore the protocol pointer */
-  data->req.p.http = s->prot_save;
-  infof(data, "CONNECT phase completed!\n");
+    /* retore the protocol pointer */
+    data->req.p.http = s->prot_save;
+    s->prot_save = NULL;
+    infof(data, "CONNECT phase completed!\n");
+  }
 }
 
 static CURLcode CONNECT_host(struct Curl_easy *data,
@@ -243,11 +246,11 @@ static CURLcode CONNECT_host(struct Curl_easy *data,
   return CURLE_OK;
 }
 
+#ifndef USE_HYPER
 static CURLcode CONNECT(struct Curl_easy *data,
                         int sockindex,
                         const char *hostname,
                         int remote_port)
-#ifndef USE_HYPER
 {
   int subversion = 0;
   struct SingleRequest *k = &data->req;
@@ -702,6 +705,10 @@ static CURLcode CONNECT(struct Curl_easy *data,
 }
 #else
 /* The Hyper version of CONNECT */
+static CURLcode CONNECT(struct Curl_easy *data,
+                        int sockindex,
+                        const char *hostname,
+                        int remote_port)
 {
   struct connectdata *conn = data->conn;
   struct hyptransfer *h = &data->hyp;
@@ -739,6 +746,8 @@ static CURLcode CONNECT(struct Curl_easy *data,
       hyper_io_set_read(io, Curl_hyper_recv);
       hyper_io_set_write(io, Curl_hyper_send);
       conn->sockfd = tunnelsocket;
+
+      data->state.hconnect = TRUE;
 
       /* create an executor to poll futures */
       if(!h->exec) {
@@ -875,7 +884,6 @@ static CURLcode CONNECT(struct Curl_easy *data,
         goto error;
       if(!done)
         break;
-      fprintf(stderr, "done\n");
       s->tunnel_state = TUNNEL_COMPLETE;
       if(h->exec) {
         hyper_executor_free(h->exec);
@@ -897,6 +905,33 @@ static CURLcode CONNECT(struct Curl_easy *data,
   } while(data->req.newurl);
 
   result = CURLE_OK;
+  if(s->tunnel_state == TUNNEL_COMPLETE) {
+    data->info.httpproxycode = data->req.httpcode;
+    if(data->info.httpproxycode/100 != 2) {
+      if(conn->bits.close && data->req.newurl) {
+        conn->bits.proxy_connect_closed = TRUE;
+        infof(data, "Connect me again please\n");
+        connect_done(data);
+      }
+      else {
+        free(data->req.newurl);
+        data->req.newurl = NULL;
+        /* failure, close this connection to avoid re-use */
+        streamclose(conn, "proxy CONNECT failure");
+        Curl_closesocket(data, conn, conn->sock[sockindex]);
+        conn->sock[sockindex] = CURL_SOCKET_BAD;
+      }
+
+      /* to back to init state */
+      s->tunnel_state = TUNNEL_INIT;
+
+      if(!conn->bits.proxy_connect_closed) {
+        failf(data, "Received HTTP code %d from proxy after CONNECT",
+              data->req.httpcode);
+        result = CURLE_RECV_ERROR;
+      }
+    }
+  }
   error:
   free(host);
   free(hostheader);
@@ -917,7 +952,6 @@ static CURLcode CONNECT(struct Curl_easy *data,
   }
   return result;
 }
-
 #endif
 
 void Curl_connect_free(struct Curl_easy *data)

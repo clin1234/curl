@@ -330,6 +330,9 @@ set_ssl_version_min_max(struct Curl_easy *data,
       ssl_version_max = CURL_SSLVERSION_MAX_TLSv1_2;
     }
   }
+  else if(ssl_version_max == CURL_SSLVERSION_MAX_DEFAULT) {
+    ssl_version_max = CURL_SSLVERSION_MAX_TLSv1_3;
+  }
 
   switch(ssl_version | ssl_version_max) {
   case CURL_SSLVERSION_TLSv1_0 | CURL_SSLVERSION_MAX_TLSv1_0:
@@ -338,11 +341,11 @@ set_ssl_version_min_max(struct Curl_easy *data,
     return CURLE_OK;
   case CURL_SSLVERSION_TLSv1_0 | CURL_SSLVERSION_MAX_TLSv1_1:
     *prioritylist = GNUTLS_CIPHERS ":-VERS-SSL3.0:-VERS-TLS-ALL:"
-      "+VERS-TLS1.0:+VERS-TLS1.1";
+      "+VERS-TLS1.1:+VERS-TLS1.0";
     return CURLE_OK;
   case CURL_SSLVERSION_TLSv1_0 | CURL_SSLVERSION_MAX_TLSv1_2:
     *prioritylist = GNUTLS_CIPHERS ":-VERS-SSL3.0:-VERS-TLS-ALL:"
-      "+VERS-TLS1.0:+VERS-TLS1.1:+VERS-TLS1.2";
+      "+VERS-TLS1.2:+VERS-TLS1.1:+VERS-TLS1.0";
     return CURLE_OK;
   case CURL_SSLVERSION_TLSv1_1 | CURL_SSLVERSION_MAX_TLSv1_1:
     *prioritylist = GNUTLS_CIPHERS ":-VERS-SSL3.0:-VERS-TLS-ALL:"
@@ -350,7 +353,7 @@ set_ssl_version_min_max(struct Curl_easy *data,
     return CURLE_OK;
   case CURL_SSLVERSION_TLSv1_1 | CURL_SSLVERSION_MAX_TLSv1_2:
     *prioritylist = GNUTLS_CIPHERS ":-VERS-SSL3.0:-VERS-TLS-ALL:"
-      "+VERS-TLS1.1:+VERS-TLS1.2";
+      "+VERS-TLS1.2:+VERS-TLS1.1";
     return CURLE_OK;
   case CURL_SSLVERSION_TLSv1_2 | CURL_SSLVERSION_MAX_TLSv1_2:
     *prioritylist = GNUTLS_CIPHERS ":-VERS-SSL3.0:-VERS-TLS-ALL:"
@@ -360,25 +363,16 @@ set_ssl_version_min_max(struct Curl_easy *data,
     *prioritylist = GNUTLS_CIPHERS ":-VERS-SSL3.0:-VERS-TLS-ALL:"
       "+VERS-TLS1.3";
     return CURLE_OK;
-  case CURL_SSLVERSION_TLSv1_0 | CURL_SSLVERSION_MAX_DEFAULT:
-    *prioritylist = GNUTLS_CIPHERS ":-VERS-SSL3.0:-VERS-TLS-ALL:"
-      "+VERS-TLS1.0:+VERS-TLS1.1:+VERS-TLS1.2"
-      ":+VERS-TLS1.3";
+  case CURL_SSLVERSION_TLSv1_0 | CURL_SSLVERSION_MAX_TLSv1_3:
+    *prioritylist = GNUTLS_CIPHERS ":-VERS-SSL3.0";
     return CURLE_OK;
-  case CURL_SSLVERSION_TLSv1_1 | CURL_SSLVERSION_MAX_DEFAULT:
+  case CURL_SSLVERSION_TLSv1_1 | CURL_SSLVERSION_MAX_TLSv1_3:
     *prioritylist = GNUTLS_CIPHERS ":-VERS-SSL3.0:-VERS-TLS-ALL:"
-      "+VERS-TLS1.1:+VERS-TLS1.2"
-      ":+VERS-TLS1.3";
+      "+VERS-TLS1.3:+VERS-TLS1.2:+VERS-TLS1.1";
     return CURLE_OK;
-  case CURL_SSLVERSION_TLSv1_2 | CURL_SSLVERSION_MAX_DEFAULT:
+  case CURL_SSLVERSION_TLSv1_2 | CURL_SSLVERSION_MAX_TLSv1_3:
     *prioritylist = GNUTLS_CIPHERS ":-VERS-SSL3.0:-VERS-TLS-ALL:"
-      "+VERS-TLS1.2"
-      ":+VERS-TLS1.3";
-    return CURLE_OK;
-  case CURL_SSLVERSION_TLSv1_3 | CURL_SSLVERSION_MAX_DEFAULT:
-    *prioritylist = GNUTLS_CIPHERS ":-VERS-SSL3.0:-VERS-TLS-ALL:"
-      "+VERS-TLS1.2"
-      ":+VERS-TLS1.3";
+      "+VERS-TLS1.3:+VERS-TLS1.2";
     return CURLE_OK;
   }
 
@@ -608,6 +602,7 @@ gtls_connect_step1(struct Curl_easy *data,
   }
   else {
 #endif
+    infof(data, "GnuTLS ciphers: %s\n", prioritylist);
     rc = gnutls_priority_set_direct(session, prioritylist, &err);
 #ifdef HAVE_GNUTLS_SRP
   }
@@ -1438,6 +1433,10 @@ static void close_one(struct ssl_connect_data *connssl)
 {
   struct ssl_backend_data *backend = connssl->backend;
   if(backend->session) {
+    char buf[32];
+    /* Maybe the server has already sent a close notify alert.
+       Read it to avoid an RST on the TCP connection. */
+    (void)gnutls_record_recv(backend->session, buf, sizeof(buf));
     gnutls_bye(backend->session, GNUTLS_SHUT_WR);
     gnutls_deinit(backend->session);
     backend->session = NULL;
@@ -1656,7 +1655,9 @@ const struct Curl_ssl Curl_ssl_gnutls = {
   Curl_none_set_engine_default,  /* set_engine_default */
   Curl_none_engines_list,        /* engines_list */
   Curl_none_false_start,         /* false_start */
-  gtls_sha256sum                 /* sha256sum */
+  gtls_sha256sum,                /* sha256sum */
+  NULL,                          /* associate_connection */
+  NULL                           /* disassociate_connection */
 };
 
 #endif /* USE_GNUTLS */

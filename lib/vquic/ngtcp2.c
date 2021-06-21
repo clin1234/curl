@@ -86,7 +86,8 @@ struct h3out {
 #define QUIC_PRIORITY \
   "NORMAL:-VERS-ALL:+VERS-TLS1.3:-CIPHER-ALL:+AES-128-GCM:+AES-256-GCM:" \
   "+CHACHA20-POLY1305:+AES-128-CCM:-GROUP-ALL:+GROUP-SECP256R1:" \
-  "+GROUP-X25519:+GROUP-SECP384R1:+GROUP-SECP521R1"
+  "+GROUP-X25519:+GROUP-SECP384R1:+GROUP-SECP521R1:" \
+  "%DISABLE_TLS13_COMPAT_MODE"
 #endif
 
 static CURLcode ng_process_ingress(struct Curl_easy *data,
@@ -934,6 +935,7 @@ static const struct Curl_handler Curl_handler_http3 = {
   ng_disconnect,                        /* disconnect */
   ZERO_NULL,                            /* readwrite */
   ng_conncheck,                         /* connection_check */
+  ZERO_NULL,                            /* attach connection */
   PORT_HTTP,                            /* defport */
   CURLPROTO_HTTPS,                      /* protocol */
   CURLPROTO_HTTP,                       /* family */

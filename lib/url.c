@@ -62,6 +62,14 @@
 #ifdef USE_LIBIDN2
 #include <idn2.h>
 
+#if defined(WIN32) && defined(UNICODE)
+#define IDN2_LOOKUP(name, host, flags) \
+  idn2_lookup_u8((const uint8_t *)name, (uint8_t **)host, flags)
+#else
+#define IDN2_LOOKUP(name, host, flags) \
+  idn2_lookup_ul((const char *)name, (char **)host, flags)
+#endif
+
 #elif defined(USE_WIN32_IDN)
 /* prototype for curl_win32_idn_to_ascii() */
 bool curl_win32_idn_to_ascii(const char *in, char **out);
@@ -92,7 +100,6 @@ bool curl_win32_idn_to_ascii(const char *in, char **out);
 #include "speedcheck.h"
 #include "warnless.h"
 #include "non-ascii.h"
-#include "inet_pton.h"
 #include "getinfo.h"
 #include "urlapi-int.h"
 #include "system_win32.h"
@@ -292,6 +299,7 @@ static const struct Curl_handler Curl_handler_dummy = {
   ZERO_NULL,                            /* disconnect */
   ZERO_NULL,                            /* readwrite */
   ZERO_NULL,                            /* connection_check */
+  ZERO_NULL,                            /* attach connection */
   0,                                    /* defport */
   0,                                    /* protocol */
   0,                                    /* family */
@@ -726,6 +734,15 @@ static void conn_shutdown(struct Curl_easy *data, struct connectdata *conn)
   DEBUGASSERT(conn);
   DEBUGASSERT(data);
   infof(data, "Closing connection %ld\n", conn->connection_id);
+
+#ifndef USE_HYPER
+  if(conn->connect_state && conn->connect_state->prot_save) {
+    /* If this was closed with a CONNECT in progress, cleanup this temporary
+       struct arrangement */
+    data->req.p.http = NULL;
+    Curl_safefree(conn->connect_state->prot_save);
+  }
+#endif
 
   /* possible left-overs from the async name resolvers */
   Curl_resolver_cancel(data);
@@ -1171,6 +1188,12 @@ ConnectionExists(struct Curl_easy *data,
         continue;
       }
 
+      if(data->set.ipver != CURL_IPRESOLVE_WHATEVER
+          && data->set.ipver != check->ip_version) {
+        /* skip because the connection is not via the requested IP version */
+        continue;
+      }
+
       if(bundle->multiuse == BUNDLE_MULTIPLEX)
         multiplexed = CONN_INUSE(check);
 
@@ -1570,12 +1593,12 @@ CURLcode Curl_idnconvert_hostname(struct Curl_easy *data,
 #else
       int flags = IDN2_NFC_INPUT;
 #endif
-      int rc = idn2_lookup_ul((const char *)host->name, &ace_hostname, flags);
+      int rc = IDN2_LOOKUP(host->name, &ace_hostname, flags);
       if(rc != IDN2_OK)
         /* fallback to TR46 Transitional mode for better IDNA2003
            compatibility */
-        rc = idn2_lookup_ul((const char *)host->name, &ace_hostname,
-                            IDN2_TRANSITIONAL);
+        rc = IDN2_LOOKUP(host->name, &ace_hostname,
+                         IDN2_TRANSITIONAL);
       if(rc == IDN2_OK) {
         host->encalloc = (char *)ace_hostname;
         /* change the name pointer to point to the encoded hostname */
@@ -2989,6 +3012,7 @@ static CURLcode parse_connect_to_host_port(struct Curl_easy *data,
   char *host_portno;
   char *portptr;
   int port = -1;
+  CURLcode result = CURLE_OK;
 
 #if defined(CURL_DISABLE_VERBOSE_STRINGS)
   (void) data;
@@ -3037,8 +3061,8 @@ static CURLcode parse_connect_to_host_port(struct Curl_easy *data,
      */
 #else
     failf(data, "Use of IPv6 in *_CONNECT_TO without IPv6 support built-in!");
-    free(host_dup);
-    return CURLE_NOT_BUILT_IN;
+    result = CURLE_NOT_BUILT_IN;
+    goto error;
 #endif
   }
 
@@ -3051,10 +3075,10 @@ static CURLcode parse_connect_to_host_port(struct Curl_easy *data,
     if(*host_portno) {
       long portparse = strtol(host_portno, &endp, 10);
       if((endp && *endp) || (portparse < 0) || (portparse > 65535)) {
-        infof(data, "No valid port number in connect to host string (%s)\n",
+        failf(data, "No valid port number in connect to host string (%s)",
               host_portno);
-        hostptr = NULL;
-        port = -1;
+        result = CURLE_SETOPT_OPTION_SYNTAX;
+        goto error;
       }
       else
         port = (int)portparse; /* we know it will fit */
@@ -3065,15 +3089,16 @@ static CURLcode parse_connect_to_host_port(struct Curl_easy *data,
   if(hostptr) {
     *hostname_result = strdup(hostptr);
     if(!*hostname_result) {
-      free(host_dup);
-      return CURLE_OUT_OF_MEMORY;
+      result = CURLE_OUT_OF_MEMORY;
+      goto error;
     }
   }
 
   *port_result = port;
 
+  error:
   free(host_dup);
-  return CURLE_OK;
+  return result;
 }
 
 /*

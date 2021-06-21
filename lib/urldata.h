@@ -794,12 +794,16 @@ struct Curl_handler {
                                    struct connectdata *conn,
                                    unsigned int checks_to_perform);
 
+  /* attach() attaches this transfer to this connection */
+  void (*attach)(struct Curl_easy *data, struct connectdata *conn);
+
   int defport;            /* Default port. */
   unsigned int protocol;  /* See CURLPROTO_* - this needs to be the single
                              specific protocol bit */
   unsigned int family;    /* single bit for protocol family; basically the
                              non-TLS name of the protocol this is */
   unsigned int flags;     /* Extra particular characteristics, see PROTOPT_* */
+
 };
 
 #define PROTOPT_NONE 0             /* nothing extra */
@@ -1407,6 +1411,7 @@ struct UrlState {
   trailers_state trailers_state; /* whether we are sending trailers
                                        and what stage are we at */
 #ifdef USE_HYPER
+  bool hconnect;  /* set if a CONNECT request */
   CURLcode hresult; /* used to pass return codes back from hyper callbacks */
 #endif
 

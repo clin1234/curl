@@ -23,6 +23,9 @@
 #if defined(HAVE_STRCASECMP) && defined(HAVE_STRINGS_H)
 #include <strings.h>
 #endif
+#define ENABLE_CURLX_PRINTF
+/* use our own printf() functions */
+#include "curlx.h"
 
 #include "tool_panykey.h"
 #include "tool_help.h"
@@ -990,9 +993,6 @@ void tool_version_info(void)
       if(curlinfo->features & feats[i].bitmask)
         featp[numfeat++] = (char *)feats[i].name;
     }
-#ifdef USE_METALINK
-    featp[numfeat++] = (char *)"Metalink";
-#endif
     qsort(&featp[0], numfeat, sizeof(char *), featcomp);
     for(i = 0; i< numfeat; i++)
       printf(" %s", featp[i]);
